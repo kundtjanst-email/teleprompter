@@ -42,7 +42,42 @@
   const clean = s => s.replace(/^\s*\n/, '').replace(/\s+$/, '');
   function setText(s) { text.textContent = clean(s) || 'Inget manus ännu. Skriv det på datorn.'; }
 
-  function settingsChanged() { store.set('settings', cur()); if (!isIpad) queueSend(); }
+  // Settings are shared: saved centrally from either device, so they survive new scripts and page reloads
+  let setT = null, lastLocalSet = 0, savingSet = Promise.resolve();
+  function settingsChanged() {
+    store.set('settings', cur());
+    lastLocalSet = Date.now();
+    clearTimeout(setT);
+    setT = setTimeout(() => {
+      const settings = cur();
+      savingSet = savingSet.then(() => post({ settings })).catch(() => {
+        syncMsg('Kunde inte spara inställningarna. Kolla internet.', 'err');
+      });
+    }, 500);
+  }
+  async function post(obj) {
+    const r = await fetch(API, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(Object.assign({ id: CHANNEL }, obj)) });
+    if (!r.ok) throw new Error(r.status);
+    return r.json();
+  }
+  // Take settings from the server unless this device changed them a moment ago
+  let firstSync = true;
+  function adoptServerSettings(serverSet) {
+    const isFirst = firstSync; firstSync = false;
+    const serverIsDefault = !serverSet || JSON.stringify(Object.assign({}, DEFAULTS, serverSet)) === JSON.stringify(DEFAULTS);
+    // First time after the update: keep what this device already had instead of falling back to defaults
+    if (isFirst && serverIsDefault && JSON.stringify(cur()) !== JSON.stringify(DEFAULTS)) { settingsChanged(); return false; }
+    if (!serverSet || !Object.keys(serverSet).length) return false;
+    if (Date.now() - lastLocalSet < 3000) return false;
+    const next = Object.assign({}, DEFAULTS, serverSet);
+    if (JSON.stringify(next) === JSON.stringify(cur())) return false;
+    const old = st.size;
+    Object.assign(st, next);
+    if (st.size !== old) st.y *= st.size / old;
+    store.set('settings', cur());
+    applySettings();
+    return true;
+  }
   function stepSetting(key, dir) {
     const [min, max, inc] = LIMITS[key];
     const next = Math.max(min, Math.min(max, st[key] + dir * inc));
@@ -132,33 +167,27 @@
   };
   window.addEventListener('resize', applySettings);
 
+  async function fetchState() {
+    const r = await fetch(API + '?id=' + CHANNEL + '&t=' + Date.now(), { cache: 'no-store' });
+    if (!r.ok) throw new Error(r.status);
+    return r.json();
+  }
+
   // ---- iPad: show the prompter and follow whatever the computer sends
   if (isIpad) {
     $('prompter').hidden = false;
     setText('Hämtar manus…');
     applySettings();
-    let lastStamp = null, lastText = null, lastSet = null, failures = 0;
+    let lastText = null, failures = 0;
     async function poll() {
       try {
-        const r = await fetch(API + '?id=' + CHANNEL + '&t=' + Date.now(), { cache: 'no-store' });
-        if (!r.ok) throw new Error(r.status);
-        const d = await r.json();
+        const d = await fetchState();
         failures = 0; syncMsg('');
-        if (d.updated_at !== lastStamp) {
-          lastStamp = d.updated_at;
-          const setJson = JSON.stringify(d.settings || {});
-          // New settings from the computer win; otherwise this iPad keeps its own adjustments
-          if (setJson !== lastSet) {
-            if (lastSet !== null || store.get('lastHostSet', null) !== setJson) {
-              Object.assign(st, DEFAULTS, d.settings || {}); store.set('settings', cur());
-            }
-            lastSet = setJson; store.set('lastHostSet', setJson);
-          }
-          if (d.text !== lastText) {
-            const first = lastText === null;
-            lastText = d.text; setText(d.text || '');
-            if (!first) { setPlaying(false); st.y = 0; }
-          }
+        adoptServerSettings(d.settings);
+        if (d.text !== lastText) {
+          const first = lastText === null;
+          lastText = d.text; setText(d.text || '');
+          if (!first) { setPlaying(false); st.y = 0; }
           applySettings();
         }
       } catch {
@@ -184,24 +213,24 @@
   };
   $('ipadLink').addEventListener('focus', e => e.target.select());
 
-  let sendT = null, sending = false, again = false, lastSent = null;
-  function queueSend() { syncMsg('Skickar…'); clearTimeout(sendT); sendT = setTimeout(send, 700); }
-  async function send() {
+  // Text is sent on its own, so a new script never touches the settings
+  let sendT = null, sending = false, again = false, lastSentText = null;
+  function queueSend() { syncMsg('Skickar…'); clearTimeout(sendT); sendT = setTimeout(sendText, 700); }
+  async function sendText() {
     if (sending) { again = true; return; }
-    const body = JSON.stringify({ id: CHANNEL, text: $('script').value, settings: cur() });
-    if (body === lastSent) { syncMsg('iPaden visar samma sak som här.', 'ok'); return; }
+    const t = $('script').value;
+    if (t === lastSentText) { syncMsg('iPaden visar samma sak som här.', 'ok'); return; }
     sending = true;
     try {
-      const r = await fetch(API, { method: 'POST', headers: { 'content-type': 'application/json' }, body });
-      if (!r.ok) throw new Error(r.status);
-      lastSent = body;
+      await post({ text: t });
+      lastSentText = t;
       syncMsg('iPaden visar samma sak som här.', 'ok');
     } catch {
       syncMsg('Kunde inte skicka. Kolla internet, försöker igen…', 'err');
-      clearTimeout(sendT); sendT = setTimeout(send, 3000);
+      clearTimeout(sendT); sendT = setTimeout(sendText, 3000);
     } finally {
       sending = false;
-      if (again) { again = false; send(); }
+      if (again) { again = false; sendText(); }
     }
   }
 
@@ -215,16 +244,22 @@
   $('edit').onclick = e => { if (e) e.stopPropagation(); setPlaying(false); $('prompter').hidden = true; $('editor').hidden = false; };
   applySettings();
 
-  // Start from this computer's own last text; on a fresh computer, show what the iPad shows now
+  // On load: settings always come from the server; text from this computer's own draft, else what the iPad shows now
   const draft = store.get('draft', null);
-  if (typeof draft === 'string') { $('script').value = draft; syncMsg(''); }
-  else {
-    syncMsg('Hämtar senaste manus…');
-    fetch(API + '?id=' + CHANNEL, { cache: 'no-store' }).then(r => r.json()).then(d => {
-      if (!$('script').value) $('script').value = d.text || '';
-      if (!store.get('settings', null) && d.settings) { Object.assign(st, DEFAULTS, d.settings); store.set('settings', cur()); applySettings(); }
-      lastSent = JSON.stringify({ id: CHANNEL, text: d.text || '', settings: Object.assign({}, DEFAULTS, d.settings || {}) });
-      syncMsg('Ändra texten så skickas den till iPaden.', 'ok');
-    }).catch(() => syncMsg('Kunde inte hämta senaste manus. Det du skriver skickas ändå när kontakten är tillbaka.', 'err'));
-  }
+  if (typeof draft === 'string') $('script').value = draft;
+  syncMsg('Hämtar…');
+  fetchState().then(d => {
+    adoptServerSettings(d.settings);
+    if (typeof draft !== 'string') { $('script').value = d.text || ''; lastSentText = d.text || ''; }
+    else if (draft === d.text) lastSentText = draft;
+    syncMsg(typeof draft === 'string' && draft !== d.text ? 'iPaden visar ett annat manus. Ändra texten här så skickas den.' : 'iPaden visar samma sak som här.', 'ok');
+  }).catch(() => syncMsg('Kunde inte hämta senaste läget. Det du ändrar skickas när kontakten är tillbaka.', 'err'));
+
+  // Keep settings in step if they are changed on the iPad or another computer
+  (function pollSettings() {
+    setTimeout(async () => {
+      try { adoptServerSettings((await fetchState()).settings); } catch {}
+      pollSettings();
+    }, document.hidden ? 10000 : 3000);
+  })();
 })();
