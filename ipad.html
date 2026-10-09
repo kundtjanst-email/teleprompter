@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="sv">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<title>Teleprompter – iPad</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body class="ipad">
+<section id="prompter" hidden>
+  <div id="stage"><div id="text"></div><div id="marker"></div></div>
+  <div id="hint">Tryck på skärmen för att pausa / visa kontroller</div>
+  <div id="bar">
+    <button class="btn primary" id="play">▶ Spela</button>
+    <button class="toggle" id="restart">⟲ Början</button>
+    <div class="ctl">Hastighet <button class="step" data-k="speed" data-d="-1" aria-label="Hastighet minska">◀</button><output id="speedOut"></output><button class="step" data-k="speed" data-d="1" aria-label="Hastighet öka">▶</button></div>
+    <div class="ctl">Textstorlek <button class="step" data-k="size" data-d="-1" aria-label="Textstorlek minska">◀</button><output id="sizeOut"></output><button class="step" data-k="size" data-d="1" aria-label="Textstorlek öka">▶</button></div>
+    <div class="ctl">Marginal <button class="step" data-k="pad" data-d="-1" aria-label="Marginal minska">◀</button><output id="padOut"></output><button class="step" data-k="pad" data-d="1" aria-label="Marginal öka">▶</button></div>
+    <div class="ctl">Läshöjd <button class="step" data-k="line" data-d="-1" aria-label="Läshöjd minska">◀</button><output id="lineOut"></output><button class="step" data-k="line" data-d="1" aria-label="Läshöjd öka">▶</button></div>
+    <button class="toggle" id="mirrorX" aria-pressed="false">⇋ Spegla</button>
+    <button class="toggle" id="mirrorY" aria-pressed="false">⇅ Vänd</button>
+    <button class="toggle" id="fs">⛶ Helskärm</button>
+    <button class="toggle" id="edit">✎ Redigera</button>
+    <span id="barSync"></span>
+  </div>
+</section>
+<script src="app.js"></script>
+</body>
+</html>

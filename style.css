@@ -1,0 +1,65 @@
+
+/* Layout: full-screen black stage with a reading line; editor view and a bottom control bar */
+:root {
+  --bg: #07080a; --fg: #f4f1e8; --muted: #8a8f98; --panel: #15171b; --line: #2a2d33; --accent: #ffc53d;
+  --ui: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --read: Georgia, "Iowan Old Style", "Times New Roman", serif;
+  color-scheme: dark;
+}
+html, body { height: 100%; }
+body { background: var(--bg); color: var(--fg); font-family: var(--ui); overflow: hidden; -webkit-user-select: none; user-select: none; }
+button, input, textarea, select { font: inherit; color: inherit; }
+
+#editor { position: fixed; inset: 0; display: flex; flex-direction: column; gap: 12px; padding: calc(16px + env(safe-area-inset-top,0px)) 16px calc(16px + env(safe-area-inset-bottom,0px)); max-width: 900px; margin: 0 auto; overflow-y: auto; }
+#editor h1 { margin: 0; font-size: 22px; font-weight: 600; }
+#editor p { margin: 0; color: var(--muted); font-size: 14px; }
+#sync { font-size: 13px; }
+#sync.ok { color: #6fd08c; }
+#sync.err { color: #ff8a7a; }
+#script { flex: 1; min-height: 200px; width: 100%; box-sizing: border-box; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px; font-family: var(--read); font-size: 20px; line-height: 1.5; resize: none; -webkit-user-select: text; user-select: text; }
+#script:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+.row { display: flex; gap: 10px; flex-wrap: wrap; }
+.btn { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px 18px; font-size: 16px; cursor: pointer; }
+.btn.primary { background: var(--accent); color: #111; border-color: var(--accent); font-weight: 600; }
+.btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.btn:disabled { opacity: .5; cursor: default; }
+
+#ipadBox { display: flex; gap: 16px; align-items: center; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px; flex-wrap: wrap; }
+#ipadBox .info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 8px; }
+#ipadBox h2 { margin: 0; font-size: 15px; font-weight: 600; }
+#ipadLink { width: 100%; box-sizing: border-box; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; font-size: 13px; color: var(--muted); -webkit-user-select: text; user-select: text; }
+#qr { width: 132px; height: 132px; background: #fff; border-radius: 8px; padding: 6px; box-sizing: border-box; flex: none; }
+#qr svg { width: 100%; height: 100%; display: block; }
+#linkNote { font-size: 13px; color: var(--muted); }
+
+#prompter { position: fixed; inset: 0; overflow: hidden; background: var(--bg); }
+#stage { position: absolute; inset: 0; overflow: hidden; }
+#stage.mirror-x { transform: scaleX(-1); }
+#stage.mirror-y { transform: scaleY(-1); }
+#stage.mirror-x.mirror-y { transform: scale(-1,-1); }
+#text { position: absolute; left: 0; right: 0; top: 0; padding: 0 6vw; font-family: var(--read); line-height: 1.35; white-space: pre-wrap; word-wrap: break-word; will-change: transform; }
+#marker { position: absolute; left: 0; right: 0; height: 0; border-top: 2px solid var(--accent); opacity: .5; pointer-events: none; }
+#marker::before, #marker::after { content: ""; position: absolute; top: -9px; border: 8px solid transparent; }
+#marker::before { left: 0; border-left-color: var(--accent); }
+#marker::after { right: 0; border-right-color: var(--accent); }
+
+#bar { position: fixed; left: 0; right: 0; bottom: 0; background: rgba(21,23,27,.94); border-top: 1px solid var(--line); padding: 12px 16px calc(12px + env(safe-area-inset-bottom,0px)); display: flex; flex-wrap: wrap; gap: 12px 20px; align-items: center; justify-content: center; transition: opacity .25s, transform .25s; z-index: 5; }
+#bar.hide { opacity: 0; transform: translateY(100%); pointer-events: none; }
+.ctl { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); }
+.ctl output { color: var(--fg); min-width: 4ch; text-align: center; font-variant-numeric: tabular-nums; }
+.step { width: 44px; height: 40px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; font-size: 15px; cursor: pointer; touch-action: manipulation; }
+.step:active { background: var(--accent); color: #111; }
+.step:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.toggle { background: transparent; border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; font-size: 14px; cursor: pointer; }
+.toggle[aria-pressed=true] { background: var(--accent); color: #111; border-color: var(--accent); }
+#play { min-width: 96px; }
+#sendBar.pending { background: var(--accent); color: #111; border-color: var(--accent); font-weight: 600; }
+#barSync { font-size: 12px; color: var(--muted); flex-basis: 100%; text-align: center; }
+#barSync.ok { color: #6fd08c; }
+#barSync.err { color: #ff8a7a; }
+body.ipad #edit, body.ipad #sendBar, body.ipad #barSync { display: none; }
+#hint { position: fixed; top: calc(12px + env(safe-area-inset-top,0px)); left: 50%; transform: translateX(-50%); font-size: 13px; color: var(--muted); background: rgba(21,23,27,.9); padding: 6px 12px; border-radius: 20px; transition: opacity .4s; z-index: 5; }
+@media (prefers-reduced-motion: reduce) { #bar, #hint { transition: none; } }
+
+body.ipad #edit { display: none; }
+#barSync:empty { display: none; }
